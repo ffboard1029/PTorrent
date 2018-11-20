@@ -21,7 +21,7 @@ namespace PTorrent
         private const byte ByteArrayDivider = 58; //":"
 
         #region Decode Methods
-    
+
         public static object Decode(byte[] bytes)
         {
             int index = 0;
@@ -30,7 +30,7 @@ namespace PTorrent
 
         public static object DecodeFile(string filepath)
         {
-            if(!File.Exists(filepath))
+            if (!File.Exists(filepath))
             {
                 return null;
             }
@@ -60,9 +60,9 @@ namespace PTorrent
         {
             List<object> objs = new List<object>();
 
-            for(int i = startIndex; i < bytes.Length; i++)
+            for (int i = startIndex; i < bytes.Length; i++)
             {
-                if(bytes[i] == ListEnd)
+                if (bytes[i] == ListEnd)
                 {
                     startIndex = i + 1;
                     return objs;
@@ -90,13 +90,13 @@ namespace PTorrent
 
             startIndex = endIndex + 1;
 
-            if(endIndex == -1)
+            if (endIndex == -1)
             {
                 return -1;
             }
 
-            long val; 
-            if(Int64.TryParse(Encoding.UTF8.GetString(bytes, startIndex, endIndex - startIndex), out val))
+            long val;
+            if (Int64.TryParse(Encoding.UTF8.GetString(bytes, startIndex, endIndex - startIndex), out val))
             {
                 return val;
             }
@@ -128,15 +128,15 @@ namespace PTorrent
         private static byte[] DecodeByteArray(byte[] bytes, ref int startIndex)
         {
             int endIndex = -1;
-            for(int i = startIndex; i < bytes.Length; i++)
+            for (int i = startIndex; i < bytes.Length; i++)
             {
-                if(bytes[i] == ByteArrayDivider)
+                if (bytes[i] == ByteArrayDivider)
                 {
                     endIndex = i;
                     break;
                 }
             }
-            if(endIndex == -1)
+            if (endIndex == -1)
             {
                 startIndex = bytes.Length;
                 return new byte[0];
@@ -161,7 +161,22 @@ namespace PTorrent
 
         public static byte[] Encode(object objToEncode)
         {
-            MemoryStream ms;
+            MemoryStream ms = new MemoryStream();
+            EncodeObject(objToEncode, ms);
+            return ms.ToArray();
+        }
+
+        public static void EncodeToFile(object objToEncode, string filepath)
+        {
+            if (File.Exists(filepath))
+            {
+                File.Delete(filepath);
+            }
+            File.WriteAllBytes(filepath, Encode(objToEncode));
+        }
+
+        private static void EncodeObject(object objToEncode, MemoryStream ms)
+        {
             switch (objToEncode)
             {
                 case byte[] bytes:
@@ -177,23 +192,48 @@ namespace PTorrent
                     EncodeList(lst, ms);
                     break;
                 case long l:
-                    EncodeNumber(lst, ms);
+                    EncodeNumber(l, ms);
                     break;
                 default:
                     break;
                 case null:
                     break;
             }
-            return ms.ToArray();
         }
 
-        public static void EncodeToFile(object objToEncode, string filepath)
+        private static void EncodeNumber(long num, MemoryStream ms)
         {
-            if(File.Exists(filepath))
+            string str = string.Format("{0}{1}{2}", NumberStart, num, NumberEnd);
+            ms.Write(Encoding.UTF8.GetBytes(str), 0, str.Length);
+        }
+
+        private static void EncodeList(List<object> lst, MemoryStream ms)
+        {
+            ms.WriteByte(ListStart);
+            foreach(var obj in lst)
             {
-                File.Delete(filepath);
+                EncodeObject(obj, ms);
             }
-            File.WriteAllBytes(filepath, Encode(objToEncode));
+            ms.WriteByte(ListEnd);
+        }
+
+        private static void EncodeDictionary(Dictionary<string, object> dict, MemoryStream ms)
+        {
+            ms.WriteByte(DictionaryStart);
+            foreach(var obj in dict)
+            {
+                EncodeByteArray(Encoding.UTF8.GetBytes(obj.Key), ms);
+                EncodeObject(obj.Value, ms);
+            }
+            ms.WriteByte(DictionaryEnd);
+        }
+
+        private static void EncodeByteArray(byte[] bytes, MemoryStream ms)
+        {
+            string length = string.Format("{0}", bytes.Length);
+            ms.Write(Encoding.UTF8.GetBytes(length), 0, length.Length);
+            ms.WriteByte(ByteArrayDivider);
+            ms.Write(bytes, 0, bytes.Length);
         }
 
         #endregion
