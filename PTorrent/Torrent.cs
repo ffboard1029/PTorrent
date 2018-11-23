@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -12,9 +13,9 @@ namespace PTorrent
 {
     public class Torrent : INotifyPropertyChanged
     {
-        public byte[] Infohash { get; private set; } = new byte[20];
-        public string HexStringInfohash { get { return BitConverter.ToString(Infohash).Replace("-", ""); } }
-        public string UrlSafeStringInfohash { get { return Encoding.UTF8.GetString(WebUtility.UrlEncodeToBytes(Infohash, 0, 20)); } }
+        public byte[] InfoHash { get; private set; } = new byte[20];
+        public string HexStringInfohash { get { return BitConverter.ToString(InfoHash).Replace("-", ""); } }
+        public string UrlSafeStringInfohash { get { return Encoding.UTF8.GetString(WebUtility.UrlEncodeToBytes(InfoHash, 0, 20)); } }
         public long TotalSize { get { return Files.Sum(x => x.Length); } }
 
         private string _comment;
@@ -23,6 +24,7 @@ namespace PTorrent
         private string _name;
         private int _piecesLength;
         private List<TorrentFileItem> _files;
+        private static SHA1 sha1 = SHA1.Create();
 
         public bool ConstructionStatus = false;
 
@@ -31,7 +33,7 @@ namespace PTorrent
             get { return Files.Count > 1 ? Name : ""; }
         }
 
-        public bool IsPrivate;
+        public bool? IsPrivate;
 
         public string Comment
         {
@@ -59,6 +61,8 @@ namespace PTorrent
             set { _name = value; NotifyPropertyChanged(); }
         }
 
+        public int BlockSize { get; private set; } = 16384; //defaulted to 16KiB
+
         public int PieceLength
         {
             get { return _piecesLength; }
@@ -66,6 +70,9 @@ namespace PTorrent
         }
 
         public byte[][] PieceHash { get; private set; }
+
+        public bool[] PieceVerified { get; private set; }
+        public bool[][] BlockAcquired { get; private set; }
 
         public List<TorrentFileItem> Files
         {
@@ -88,6 +95,20 @@ namespace PTorrent
                 return;
             }
             var torrentDict = (Dictionary<string, object>)decodedTorrentFile;
+
+            if(!torrentDict.ContainsKey("announce"))
+            {
+                Trackers.Add(new Tracker(Encoding.UTF8.GetString((byte[])torrentDict["announce"])));
+            }
+            if(torrentDict.ContainsKey("announce-list"))
+            {
+                //todo not sure if this is always lists of lists with one element....
+                var announceList = (List<object>)torrentDict["announce-list"];
+                foreach(List<object> ann in announceList)
+                {
+                    Trackers.Add(new Tracker(Encoding.UTF8.GetString((byte[])ann[0])));
+                }
+            }
 
             if(torrentDict.ContainsKey("comment"))
             {
@@ -169,9 +190,58 @@ namespace PTorrent
                 return;
             }
             var pieceHashes = (byte[])info["pieces"];
-            PieceHash = new byte[PieceLength][];
+
+            int pieceCount = Convert.ToInt32(TotalSize / Convert.ToDouble(PieceLength));
+
+            PieceHash = new byte[pieceCount][];
+            PieceVerified = new bool[pieceCount];
+            BlockAcquired = new bool[pieceCount][];
+
+            for(int i = 0; i < pieceCount; i++)
+            {
+                PieceHash[i] = new byte[20];
+                Buffer.BlockCopy(pieceHashes, i * 20, PieceHash[i], 0, 20);
+            }
+
+            var infoToHash = BEncoding.Encode(ConvertInfoToBEncode());
+            InfoHash = sha1.ComputeHash(infoToHash);
 
             ConstructionStatus = true;
+        }
+
+        public object ConvertInfoToBEncode()
+        {
+            var infoDict = new Dictionary<string, object>();
+
+            if (Files.Count > 1)
+            {
+                var bEncodefiles = new List<object>();
+                foreach (var file in Files)
+                {
+                    var dict = new Dictionary<string, object>();
+                    dict["length"] = file.Length;
+                    dict["path"] = file.Path.Split(Path.DirectorySeparatorChar).Cast<object>().ToList();
+
+                    bEncodefiles.Add(dict);
+                }
+                infoDict["files"] = bEncodefiles;
+                infoDict["name"] = Name;
+            }
+            else
+            {
+                infoDict["length"] = Files[0].Length;
+                infoDict["name"] = Files[0].Path;
+            }
+
+            if(IsPrivate != null)
+            {
+                infoDict["private"] = ((bool)IsPrivate) ? 1 : 0;
+            }
+
+            infoDict["piece length"] = PieceLength;
+            infoDict["pieces"] = PieceHash.SelectMany(x => x).ToArray();
+
+            return infoDict;
         }
 
         #region NotifyPropertyChanged
