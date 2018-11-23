@@ -22,60 +22,62 @@ namespace PTorrent
 
         #region Decode Methods
 
-        public static object Decode(byte[] bytes)
+        public static bool Decode(byte[] bytes, out object decodedObject)
         {
             int index = 0;
-            return DecodeObject(bytes, ref index);
+            return DecodeObject(bytes, ref index, out decodedObject);
         }
 
-        public static object DecodeFile(string filepath)
+        public static bool DecodeFile(string filepath, out object decodedFile)
         {
+            decodedFile = null;
             if (!File.Exists(filepath))
             {
-                return null;
+                return false;
             }
 
-            return Decode(File.ReadAllBytes(filepath));
+            return Decode(File.ReadAllBytes(filepath), out decodedFile);
         }
 
-        private static object DecodeObject(byte[] bytes, ref int startIndex)
+        private static bool DecodeObject(byte[] bytes, ref int startIndex, out object decodedObject)
         {
             switch (bytes[startIndex])
             {
                 case ListStart:
                     startIndex++;
-                    return DecodeList(bytes, ref startIndex);
+                    return DecodeList(bytes, ref startIndex, out decodedObject);
                 case DictionaryStart:
                     startIndex++;
-                    return DecodeDictionary(bytes, ref startIndex);
+                    return DecodeDictionary(bytes, ref startIndex, out decodedObject);
                 case NumberStart:
                     startIndex++;
-                    return DecodeNumber(bytes, ref startIndex);
+                    return DecodeNumber(bytes, ref startIndex, out decodedObject);
                 default:
-                    return DecodeByteArray(bytes, ref startIndex);
+                    return DecodeByteArray(bytes, ref startIndex, out decodedObject);
             }
         }
 
-        private static List<object> DecodeList(byte[] bytes, ref int startIndex)
+        private static bool DecodeList(byte[] bytes, ref int startIndex, out object decodedList)
         {
-            List<object> objs = new List<object>();
+            var objs = new List<object>();
+            decodedList = objs;
 
             for (int i = startIndex; i < bytes.Length; i++)
             {
                 if (bytes[i] == ListEnd)
                 {
                     startIndex = i + 1;
-                    return objs;
+                    return true;
                 }
-                objs.Add(DecodeObject(bytes, ref i));
+                if (DecodeObject(bytes, ref i, out object decodedObject))
+                {
+                    objs.Add(decodedObject);
+                }
             }
-
-            //we shoudln't get past the end of the byte array unless it's malformed
-            startIndex = bytes.Length;
-            return null;
+            return false;
         }
 
-        private static long DecodeNumber(byte[] bytes, ref int startIndex)
+        private static bool DecodeNumber(byte[] bytes, ref int startIndex, out object decodedNumber)
         {
             int endIndex = -1;
 
@@ -89,43 +91,48 @@ namespace PTorrent
             }
 
             startIndex = endIndex + 1;
+            decodedNumber = 0;
 
             if (endIndex == -1)
             {
-                return -1;
+                return false;
             }
 
             long val;
             if (Int64.TryParse(Encoding.UTF8.GetString(bytes, startIndex, endIndex - startIndex), out val))
             {
-                return val;
+                decodedNumber = val;
+                return true;
             }
 
-            return -1;
+            return false;
         }
 
-        private static Dictionary<string, object> DecodeDictionary(byte[] bytes, ref int startIndex)
+        private static bool DecodeDictionary(byte[] bytes, ref int startIndex, out object decodedDict)
         {
-            Dictionary<string, object> objs = new Dictionary<string, object>();
+            var objs = new Dictionary<string, object>();
+            decodedDict = objs;
 
             for (int i = startIndex; i < bytes.Length; i++)
             {
                 if (bytes[i] == DictionaryEnd)
                 {
                     startIndex = i + 1;
-                    return objs;
+                    return true;
                 }
-                string key = Encoding.UTF8.GetString(DecodeByteArray(bytes, ref i));
-                object val = DecodeObject(bytes, ref i);
+                if(DecodeByteArray(bytes, ref i, out object key) && DecodeObject(bytes, ref i, out object val))
+                {
+                    var keyString = Encoding.UTF8.GetString((byte[])key);
+                    objs.Add(keyString, val);
+                }
 
-                objs.Add(key, val);
             }
             //we shoudln't get past the end of the byte array unless it's malformed
             startIndex = bytes.Length;
-            return null;
+            return false;
         }
 
-        private static byte[] DecodeByteArray(byte[] bytes, ref int startIndex)
+        private static bool DecodeByteArray(byte[] bytes, ref int startIndex, out object decodedByteArr)
         {
             int endIndex = -1;
             for (int i = startIndex; i < bytes.Length; i++)
@@ -136,10 +143,12 @@ namespace PTorrent
                     break;
                 }
             }
+            decodedByteArr = null;
+
             if (endIndex == -1)
             {
                 startIndex = bytes.Length;
-                return new byte[0];
+                return false;
             }
             int length;
             if (Int32.TryParse(Encoding.UTF8.GetString(bytes, startIndex, endIndex - startIndex), out length))
@@ -148,11 +157,13 @@ namespace PTorrent
                 startIndex = endIndex + length;
                 byte[] outArray = new byte[length];
                 Array.Copy(bytes, endIndex, outArray, 0, length);
+                decodedByteArr = outArray;
+                return true;
             }
 
             //we shoudln't get past the end of the byte array unless it's malformed
             startIndex = bytes.Length;
-            return new byte[0];
+            return false;
         }
 
         #endregion
@@ -180,7 +191,7 @@ namespace PTorrent
             switch (objToEncode)
             {
                 case byte[] bytes:
-                    EncodeByteArray(objToEncode, ms);
+                    EncodeByteArray(bytes, ms);
                     break;
                 case string str:
                     EncodeByteArray(Encoding.UTF8.GetBytes(str), ms);
@@ -201,13 +212,18 @@ namespace PTorrent
             }
         }
 
-        private static void EncodeNumber(long num, MemoryStream ms)
+        public static void EncodeNumber(long num, MemoryStream ms)
         {
-            string str = string.Format("{0}{1}{2}", NumberStart, num, NumberEnd);
+            string str = EncodeNumber(num);
             ms.Write(Encoding.UTF8.GetBytes(str), 0, str.Length);
         }
 
-        private static void EncodeList(List<object> lst, MemoryStream ms)
+        public static string EncodeNumber(long num)
+        {
+            return string.Format("{0}{1}{2}", NumberStart, num, NumberEnd);
+        }
+
+        public static void EncodeList(List<object> lst, MemoryStream ms)
         {
             ms.WriteByte(ListStart);
             foreach(var obj in lst)
@@ -217,7 +233,7 @@ namespace PTorrent
             ms.WriteByte(ListEnd);
         }
 
-        private static void EncodeDictionary(Dictionary<string, object> dict, MemoryStream ms)
+        public static void EncodeDictionary(Dictionary<string, object> dict, MemoryStream ms)
         {
             ms.WriteByte(DictionaryStart);
             foreach(var obj in dict)
@@ -228,7 +244,7 @@ namespace PTorrent
             ms.WriteByte(DictionaryEnd);
         }
 
-        private static void EncodeByteArray(byte[] bytes, MemoryStream ms)
+        public static void EncodeByteArray(byte[] bytes, MemoryStream ms)
         {
             string length = string.Format("{0}", bytes.Length);
             ms.Write(Encoding.UTF8.GetBytes(length), 0, length.Length);
