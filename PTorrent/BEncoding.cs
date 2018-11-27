@@ -72,6 +72,7 @@ namespace PTorrent
                 if (DecodeObject(bytes, ref i, out object decodedObject))
                 {
                     objs.Add(decodedObject);
+                    i--;//subtract one on i because we are about to ++ it when the loop goes around, was causing missed numbers
                 }
             }
             return false;
@@ -124,6 +125,7 @@ namespace PTorrent
                 {
                     var keyString = Encoding.UTF8.GetString((byte[])key);
                     objs.Add(keyString, val);
+                    i--;//subtract one on i because we are about to ++ it when the loop goes around, was causing missed numbers
                 }
 
             }
@@ -154,7 +156,7 @@ namespace PTorrent
             if (Int32.TryParse(Encoding.UTF8.GetString(bytes, startIndex, endIndex - startIndex), out length))
             {
                 endIndex++;
-                startIndex = endIndex + length;
+                startIndex = endIndex + length - 1;
                 byte[] outArray = new byte[length];
                 Array.Copy(bytes, endIndex, outArray, 0, length);
                 decodedByteArr = outArray;

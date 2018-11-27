@@ -7,6 +7,34 @@
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
     <Grid>
-        
+        <Grid.RowDefinitions>
+            <RowDefinition Height="25"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <Menu Grid.Row="0">
+            <MenuItem Name="File" Header="File">
+                <MenuItem Header="Open" Click="Open_Click"/>
+                <MenuItem Header="Create" Click="Create_Click"/>
+            </MenuItem>
+        </Menu>
+        <DataGrid Grid.Row="1">
+            <DataGrid.RowDetailsTemplate>
+                <DataTemplate>
+                    <UniformGrid>
+                        <ProgressBar Grid.Row="0" Grid.Column="0" Maximum="{Binding PieceCount}" Value="{Binding NumVerifiedPieces}"></ProgressBar>
+                        <Grid Grid.Row="0" Grid.Column="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1*"/>
+                                <ColumnDefinition Width="1*"/>
+                                <ColumnDefinition Width="1*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Name}" Grid.Column="0"/>
+                            <TextBlock Text="{Binding Progress}" Grid.Column="1"/>
+                            <TextBlock Text="{Binding TotalSizeFormatted}" Grid.Column="2"/>
+                        </Grid>
+                    </UniformGrid>
+                </DataTemplate>
+            </DataGrid.RowDetailsTemplate>
+        </DataGrid>
     </Grid>
 </Window>

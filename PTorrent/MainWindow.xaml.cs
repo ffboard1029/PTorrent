@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Win32;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -23,6 +24,37 @@ namespace PTorrent
         public MainWindow()
         {
             InitializeComponent();
+        }
+
+        private void Open_Click(object sender, RoutedEventArgs e)
+        {
+            var openFile = new OpenFileDialog();
+            openFile.Multiselect = true;
+            openFile.Title = "Select Torrent file";
+            openFile.Filter = "Torrent|*.torrent|All files (*.*)|*.*";
+            openFile.CheckFileExists = true;
+            openFile.CheckPathExists = true;
+
+            if (openFile.ShowDialog() ?? false)
+            {
+                var files = openFile.FileNames;
+                if(files.Length > 0)
+                {
+                    foreach(var file in files)
+                    {
+                        var t = new Torrent(file);
+                        if(t.ConstructionStatus)
+                        {
+                            //todo add to list of torrents, this will need to be a model
+                        }
+                    }
+                }
+            }
+        }
+
+        private void Create_Click(object sender, RoutedEventArgs e)
+        {
+
         }
     }
 }

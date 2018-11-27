@@ -19,6 +19,44 @@ namespace PTorrent
         public string HexStringInfohash { get { return BitConverter.ToString(InfoHash).Replace("-", ""); } }
         public string UrlSafeStringInfohash { get { return Encoding.UTF8.GetString(WebUtility.UrlEncodeToBytes(InfoHash, 0, 20)); } }
         public long TotalSize { get { return Files.Sum(x => x.Length); } }
+        public string TotalSizeFormatted
+        {
+            get
+            {
+                //Bytes
+                if (TotalSize < 1 << 10)
+                {
+                    return string.Format("{0} B", TotalSize);
+                }
+                //KiB
+                else if (TotalSize < 1 << 20)
+                {
+                    return string.Format("{0:0.###} MiB", (double)TotalSize / (1 << 10));
+                }
+                //MiB
+                else if (TotalSize < 1 << 30)
+                {
+                    return string.Format("{0:0.###} MiB", (double)TotalSize / (1 << 20));
+                }
+                //GiB
+                else if (TotalSize < 1 << 40)
+                {
+                    return string.Format("{0:0.###} GiB", (double)TotalSize / (1 << 30));
+                }
+                //TiB
+                else if (TotalSize < 1 << 50)
+                {
+                    return string.Format("{0:0.###} TiB", (double)TotalSize / (1 << 40));
+                }
+                //PiB   //I really hope not.....
+                else
+                {
+                    return string.Format("{0:0.###} PiB", (double)TotalSize / (1 << 50));
+                }
+            }
+        }
+
+        public string Progress { get { return string.Format("{0:F1}%", NumVerifiedPieces / (double)PieceCount * 100); } }
 
         private object[] _fileLocks;
 
@@ -441,6 +479,7 @@ namespace PTorrent
             }
 
             VerifiedPieces[pieceIndex] = verified;
+            NotifyPropertyChanged("NumVerifiedPieces");
 
             if(verified)
             {
