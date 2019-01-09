@@ -64,7 +64,7 @@ namespace PTorrent
         private string _createdBy;
         private DateTime _creationDate;
         private string _name;
-        private int _piecesLength;
+        private long _piecesLength;
         private List<TorrentFileItem> _files;
         private static SHA1 sha1 = SHA1.Create();
         private int _pieceCount;
@@ -123,7 +123,7 @@ namespace PTorrent
         /// </summary>
         public int BlockSize { get; private set; } = 16384; //defaulted to 16KiB
 
-        public int PieceLength
+        public long PieceLength
         {
             get { return _piecesLength; }
             set { _piecesLength = value; NotifyPropertyChanged(); }
@@ -168,6 +168,8 @@ namespace PTorrent
 
         public Torrent(string torrentFilePath)
         {
+            Files = new List<TorrentFileItem>();
+
             if(!BEncoding.DecodeFile(torrentFilePath, out object decodedTorrentFile))
             {
                 return;
@@ -272,9 +274,10 @@ namespace PTorrent
             {
                 return;
             }
-            PieceLength = (int)info["piece length"];
 
-            if(!info.ContainsKey("pieces"))
+            PieceLength = (long)info["piece length"];
+
+            if (!info.ContainsKey("pieces"))
             {
                 return;
             }
@@ -341,7 +344,7 @@ namespace PTorrent
             return infoDict;
         }
 
-        private int GetPieceSize(int pieceIndex)
+        private long GetPieceSize(int pieceIndex)
         {
             if(pieceIndex == PieceCount - 1)
             {

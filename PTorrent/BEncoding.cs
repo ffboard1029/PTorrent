@@ -91,11 +91,11 @@ namespace PTorrent
                 }
             }
 
-            startIndex = endIndex + 1;
             decodedNumber = 0;
 
             if (endIndex == -1)
             {
+                startIndex = bytes.Length;
                 return false;
             }
 
@@ -103,9 +103,11 @@ namespace PTorrent
             if (Int64.TryParse(Encoding.UTF8.GetString(bytes, startIndex, endIndex - startIndex), out val))
             {
                 decodedNumber = val;
+                startIndex = endIndex + 1;
                 return true;
             }
 
+            startIndex = bytes.Length;
             return false;
         }
 
@@ -156,7 +158,7 @@ namespace PTorrent
             if (Int32.TryParse(Encoding.UTF8.GetString(bytes, startIndex, endIndex - startIndex), out length))
             {
                 endIndex++;
-                startIndex = endIndex + length - 1;
+                startIndex = endIndex + length;
                 byte[] outArray = new byte[length];
                 Array.Copy(bytes, endIndex, outArray, 0, length);
                 decodedByteArr = outArray;
