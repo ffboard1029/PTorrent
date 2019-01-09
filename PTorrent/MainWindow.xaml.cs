@@ -1,18 +1,12 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace PTorrent
 {
@@ -45,11 +39,20 @@ namespace PTorrent
                         var t = new Torrent(file);
                         if(t.ConstructionStatus)
                         {
-                            //todo add to list of torrents, this will need to be a model
+                            //todo add to list of torrents, this will need to be in the main model (so the progres bar can be displayed)
+                            Task.Run(() => BeginDownload(t));
                         }
                     }
                 }
             }
+        }
+
+        private void BeginDownload(Torrent t)
+        {
+            t.ID = "P_T" + Path.GetRandomFileName().Replace(".", "") + DateTime.Now.ToString("mmssff");
+            t.Port = 50000 + 1;
+
+            t.UpdatePeerList(TrackerEventType.Started);
         }
 
         private void Create_Click(object sender, RoutedEventArgs e)

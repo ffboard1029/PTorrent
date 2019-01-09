@@ -11,9 +11,20 @@ using System.Threading.Tasks;
 
 namespace PTorrent
 {
+    public enum TrackerEventType
+    {
+        Started,
+        Paused,
+        Stopped
+    }
+
     public class Torrent : INotifyPropertyChanged
     {
         public event EventHandler<int> PieceVerified;
+        public event EventHandler<List<IPEndPoint>> PeerListUpdated;
+
+        public string ID;
+        public ushort Port;
 
         public byte[] InfoHash { get; private set; } = new byte[20];
         public string HexStringInfohash { get { return BitConverter.ToString(InfoHash).Replace("-", ""); } }
@@ -71,6 +82,8 @@ namespace PTorrent
         private string _downloadDirectory;
 
         public bool ConstructionStatus = false;
+
+        private TimeSpan _peerRequestInterval;
 
         /// <summary>
         /// The directory that is inside the torrent (if there are multiple files)
@@ -157,6 +170,10 @@ namespace PTorrent
         /// </summary>
         public int NumVerifiedPieces { get { return VerifiedPieces.Count(x => x); } }
 
+        public long UploadedBytes { get; set; } = 0;
+        public long DownloadedBytes { get { return PieceLength * NumVerifiedPieces; } }
+        public long BytesLeftToDownload { get { return TotalSize - DownloadedBytes; } }
+
         public List<TorrentFileItem> Files
         {
             get { return _files; }
@@ -164,7 +181,6 @@ namespace PTorrent
         }
 
         public List<Tracker> Trackers { get; } = new List<Tracker>();
-
 
         public Torrent(string torrentFilePath)
         {
@@ -181,10 +197,9 @@ namespace PTorrent
             }
             var torrentDict = (Dictionary<string, object>)decodedTorrentFile;
 
-            if(!torrentDict.ContainsKey("announce"))
+            if(torrentDict.ContainsKey("announce"))
             {
                 var t = new Tracker(Encoding.UTF8.GetString((byte[])torrentDict["announce"]));
-                t.PeerListUpdated += HandleUpdatePeerList;
                 Trackers.Add(t);
             }
             if(torrentDict.ContainsKey("announce-list"))
@@ -194,9 +209,12 @@ namespace PTorrent
                 foreach(List<object> ann in announceList)
                 {
                     var t = new Tracker(Encoding.UTF8.GetString((byte[])ann[0]));
-                    t.PeerListUpdated += HandleUpdatePeerList;
                     Trackers.Add(t);
                 }
+            }
+            if(Trackers.Count <= 0)
+            {
+                return;
             }
 
             if(torrentDict.ContainsKey("comment"))
@@ -307,6 +325,69 @@ namespace PTorrent
         private void HandleUpdatePeerList(object sender, List<IPEndPoint> e)
         {
 
+        }
+        
+        public List<string> GetAnnounceURLs(TrackerEventType eventType)
+        {
+            var urlParams = string.Format("?info_hash={0}&peer_id={1}&port={2}&uploaded={3}&downloaded={4}&left={5}&event={6}&compact=1", 
+                UrlSafeStringInfohash, ID, Port, UploadedBytes, 
+                DownloadedBytes, BytesLeftToDownload, Enum.GetName(typeof(TrackerEventType), eventType).ToLower());
+
+            var lst = new List<string>();
+
+            foreach(var tracker in Trackers)
+            {
+                lst.Add(tracker.Url + urlParams);
+            }
+            
+            return lst;
+        }
+
+        public async Task UpdatePeerList(TrackerEventType eventType)
+        {
+            var urls = GetAnnounceURLs(eventType);
+
+            foreach (var url in urls)
+            {
+                var httpreq = (HttpWebRequest)HttpWebRequest.Create(url);
+                var response = (HttpWebResponse)await httpreq.GetResponseAsync();
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    byte[] data;
+                    using (var stream = response.GetResponseStream())
+                    {
+                        data = new byte[response.ContentLength];
+                        stream.Read(data, 0, (int)response.ContentLength);
+                    }
+
+                    BEncoding.Decode(data, out object decoded);
+
+                    var info = decoded as Dictionary<string, object>;
+                    if (info == null)
+                    {
+
+                    }
+                    _peerRequestInterval = TimeSpan.FromSeconds((long)info["interval"]);
+                    var peerInfo = (byte[])info["peers"];
+
+                    var peers = new List<IPEndPoint>();
+                    //peerInfo is a byte array of all the peers, where each peer ip and port is represented by 6 bytes
+                    for (int i = 0; i < peerInfo.Length; i += 6)
+                    {
+                        string ip = peerInfo[i] + "." + peerInfo[i + 1] + "." + peerInfo[i + 2] + "." + peerInfo[i + 3];
+                        var p = new byte[2];
+                        //need to swap byte order, because big endianness
+                        p[0] = peerInfo[5];
+                        p[1] = peerInfo[4];
+                        ushort port = BitConverter.ToUInt16(p, 0);
+                        peers.Add(new IPEndPoint(IPAddress.Parse(ip), port));
+                    }
+
+                    Task.Run(() => PeerListUpdated?.Invoke(this, peers));
+                    return;
+                }
+            }
+            
         }
 
         public object ConvertInfoToBEncode()
@@ -553,9 +634,12 @@ namespace PTorrent
 
     public class Tracker
     {
-        public event EventHandler<List<IPEndPoint>> PeerListUpdated;
-
         private string _url;
+
+        public string Url
+        {
+            get { return _url; }
+        }
 
         public Tracker(string url)
         {
