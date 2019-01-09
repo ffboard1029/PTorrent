@@ -343,14 +343,25 @@ namespace PTorrent
             return lst;
         }
 
-        public async Task UpdatePeerList(TrackerEventType eventType)
+        public void UpdatePeerList(TrackerEventType eventType)
         {
             var urls = GetAnnounceURLs(eventType);
 
             foreach (var url in urls)
             {
                 var httpreq = (HttpWebRequest)HttpWebRequest.Create(url);
-                var response = (HttpWebResponse)await httpreq.GetResponseAsync();
+                httpreq.UserAgent = "PTorrent";
+                httpreq.Timeout = 2 * 60 * 1000;
+                HttpWebResponse response;
+                try
+                {
+                    response = (HttpWebResponse)httpreq.GetResponse();
+                }
+                catch(Exception ex)
+                {
+                    //todo
+                    continue;
+                }
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
                     byte[] data;
@@ -365,7 +376,7 @@ namespace PTorrent
                     var info = decoded as Dictionary<string, object>;
                     if (info == null)
                     {
-
+                        continue;
                     }
                     _peerRequestInterval = TimeSpan.FromSeconds((long)info["interval"]);
                     var peerInfo = (byte[])info["peers"];
